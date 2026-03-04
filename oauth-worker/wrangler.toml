@@ -1,0 +1,10 @@
+name = "aimap-oauth"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[vars]
+ALLOWED_ORIGIN = "http://localhost:5173"
+
+# Set these as secrets via `wrangler secret put`:
+# GITHUB_CLIENT_ID
+# GITHUB_CLIENT_SECRET
