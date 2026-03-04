@@ -26,7 +26,7 @@ export default function Hero() {
                 href={DEMO_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-teal text-white text-sm font-medium rounded-md hover:bg-brand-teal-dark transition-colors"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-sky-500 text-white text-sm font-medium rounded-md hover:bg-sky-600 transition-colors"
               >
                 Try the Demo
                 <ExternalLink className="w-4 h-4" />
