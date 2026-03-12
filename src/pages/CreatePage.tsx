@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Rocket, Loader2, ArrowLeft, ArrowRight, Github } from 'lucide-react'
 import type { CreateFormData } from '@/types'
@@ -10,7 +10,9 @@ import {
   validateStep4,
 } from '@/lib/validation'
 import { useAuth } from '@/contexts/AuthContext'
+import { useMapHistory } from '@/contexts/MapHistoryContext'
 import { useGeneration } from '@/hooks/useGeneration'
+import { useWizardState } from '@/hooks/useWizardState'
 import { isOAuthConfigured } from '@/lib/oauth'
 import StepIndicator from '@/components/ui/StepIndicator'
 import StepDepartment from '@/components/create/StepDepartment'
@@ -43,25 +45,12 @@ const INITIAL_DATA: CreateFormData = {
 
 export default function CreatePage() {
   const navigate = useNavigate()
-  const { token, user, login, loading: authLoading } = useAuth()
+  const { token, user, login, loading: authLoading, error: authError } = useAuth()
   const { progress, generate, retry } = useGeneration(token)
+  const { addMap } = useMapHistory()
 
-  const [step, setStep] = useState(0)
-  const [data, setData] = useState<CreateFormData>(INITIAL_DATA)
+  const { data, step, updateSlice, updateStep, clearWizard } = useWizardState(INITIAL_DATA)
   const [errors, setErrors] = useState<StepErrors>({})
-
-  const updateSlice = useCallback(
-    <K extends keyof CreateFormData>(
-      key: K,
-      updates: Partial<CreateFormData[K]>,
-    ) => {
-      setData((prev) => ({
-        ...prev,
-        [key]: { ...prev[key], ...updates },
-      }))
-    },
-    [],
-  )
 
   const validate = useCallback((): StepErrors => {
     switch (step) {
@@ -84,19 +73,39 @@ export default function CreatePage() {
     if (Object.keys(stepErrors).length > 0) return
 
     if (step < 3) {
-      setStep((s) => s + 1)
+      updateStep(step + 1)
     } else {
       const result = await generate(data)
       if (result) {
+        const now = new Date().toISOString()
+        addMap({
+          id: `${result.owner}/${result.repo}`,
+          owner: result.owner,
+          repo: result.repo,
+          status: 'generating',
+          createdAt: now,
+          updatedAt: now,
+          config: {
+            universityName: data.department.universityName,
+            departmentName: data.department.departmentName,
+            colorTheme: data.department.colorTheme,
+            researcherCount: data.researchers.detectedCount,
+            llmProvider: data.aiSummaries.provider,
+          },
+          pagesUrl: `https://${result.owner}.github.io/${result.repo}/`,
+          repoUrl: `https://github.com/${result.owner}/${result.repo}`,
+          actionsUrl: `https://github.com/${result.owner}/${result.repo}/actions`,
+        })
+        clearWizard()
         navigate(`/progress/${result.owner}/${result.repo}`)
       }
     }
-  }, [step, validate, generate, data, navigate])
+  }, [step, validate, generate, data, navigate, addMap, clearWizard, updateStep])
 
   const handleBack = useCallback(() => {
     setErrors({})
-    setStep((s) => Math.max(0, s - 1))
-  }, [])
+    updateStep(Math.max(0, step - 1))
+  }, [step, updateStep])
 
   const oauthReady = isOAuthConfigured()
 
@@ -110,6 +119,11 @@ export default function CreatePage() {
           <p className="mt-2 text-stone-600 max-w-md">
             Connect your GitHub account so we can create a repository and set up the generation workflow for you.
           </p>
+          {authError && (
+            <p className="mt-4 text-sm text-red-600 bg-red-50 px-4 py-2 rounded-md">
+              {authError}
+            </p>
+          )}
           {oauthReady ? (
             <button
               onClick={login}

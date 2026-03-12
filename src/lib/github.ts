@@ -12,13 +12,37 @@ async function ghFetch(token: string, path: string, options: RequestInit = {}) {
     },
   })
 
+  if (res.status === 429 || (res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0')) {
+    const retryAfter = res.headers.get('retry-after')
+    const resetHeader = res.headers.get('x-ratelimit-reset')
+    let waitMs = 60_000
+    if (retryAfter) {
+      waitMs = parseInt(retryAfter, 10) * 1000
+    } else if (resetHeader) {
+      waitMs = Math.max((parseInt(resetHeader, 10) * 1000) - Date.now(), 30_000)
+    }
+    throw new RateLimitError(waitMs)
+  }
+
   if (!res.ok) {
     const body = await res.text()
+    // Also catch 403 rate limit messages that don't have the header
+    if (res.status === 403 && body.includes('rate limit')) {
+      throw new RateLimitError(60_000)
+    }
     throw new Error(`GitHub API error ${res.status}: ${body}`)
   }
 
   if (res.status === 204) return null
   return res.json()
+}
+
+export class RateLimitError extends Error {
+  retryAfterMs: number
+  constructor(retryAfterMs: number) {
+    super(`Rate limited — retry after ${Math.round(retryAfterMs / 1000)}s`)
+    this.retryAfterMs = retryAfterMs
+  }
 }
 
 export async function getRepo(token: string, owner: string, repo: string) {
@@ -120,13 +144,82 @@ export async function triggerWorkflow(token: string, owner: string, repo: string
 }
 
 export async function getLatestWorkflowRun(token: string, owner: string, repo: string) {
-  const data = await ghFetch(token, `/repos/${owner}/${repo}/actions/runs?per_page=1`)
+  const data = await ghFetch(token, `/repos/${owner}/${repo}/actions/workflows/${WORKFLOW_FILE}/runs?per_page=1`)
   return data?.workflow_runs?.[0] ?? null
 }
 
 export async function getWorkflowJobs(token: string, owner: string, repo: string, runId: number) {
-  const data = await ghFetch(token, `/repos/${owner}/${repo}/actions/runs/${runId}/jobs`)
+  const data = await ghFetch(token, `/repos/${owner}/${repo}/actions/runs/${runId}/jobs?per_page=100`)
   return data?.jobs ?? []
+}
+
+export async function getRepoFileContent(token: string, owner: string, repo: string, path: string): Promise<string> {
+  const data = await ghFetch(token, `/repos/${owner}/${repo}/contents/${path}`)
+  // atob() produces a Latin-1 string, not UTF-8 — decode properly via Uint8Array
+  const binary = atob(data.content)
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0))
+  return new TextDecoder().decode(bytes)
+}
+
+export async function getWorkflowArtifacts(token: string, owner: string, repo: string, runId: number) {
+  const data = await ghFetch(token, `/repos/${owner}/${repo}/actions/runs/${runId}/artifacts`)
+  return data?.artifacts ?? []
+}
+
+export async function getJobLogs(token: string, owner: string, repo: string, jobId: number): Promise<string | null> {
+  try {
+    const url = `https://api.github.com/repos/${owner}/${repo}/actions/jobs/${jobId}/logs`
+    console.debug(`[getJobLogs] Fetching logs for job ${jobId}...`)
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+      },
+    })
+    console.debug(`[getJobLogs] job=${jobId} status=${res.status} redirected=${res.redirected} url=${res.url}`)
+    if (res.ok) {
+      const text = await res.text()
+      console.debug(`[getJobLogs] job=${jobId} got ${text.length} chars`)
+      return text
+    }
+    console.warn(`[getJobLogs] job=${jobId} not ok: ${res.status}`)
+    return null
+  } catch (err) {
+    console.warn(`[getJobLogs] job=${jobId} error:`, err)
+    return null
+  }
+}
+
+export async function rerunWorkflow(token: string, owner: string, repo: string) {
+  return ghFetch(token, `/repos/${owner}/${repo}/actions/workflows/${WORKFLOW_FILE}/dispatches`, {
+    method: 'POST',
+    body: JSON.stringify({ ref: 'main' }),
+  })
+}
+
+export async function rerunFailedJobs(token: string, owner: string, repo: string, runId: number) {
+  return ghFetch(token, `/repos/${owner}/${repo}/actions/runs/${runId}/rerun-failed-jobs`, {
+    method: 'POST',
+  })
+}
+
+export async function downloadArtifact(token: string, owner: string, repo: string, artifactId: number, filename: string) {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/artifacts/${artifactId}/zip`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+    },
+  })
+  if (!res.ok) throw new Error(`Failed to download artifact: ${res.status}`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${filename}.zip`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 export async function enableGitHubPages(token: string, owner: string, repo: string) {

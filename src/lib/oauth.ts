@@ -39,19 +39,35 @@ export function extractOAuthCallback(): { code: string } | null {
 }
 
 export async function exchangeCodeForToken(code: string): Promise<string> {
-  const res = await fetch(`${OAUTH_WORKER_URL}/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }),
-  })
+  let res: Response
+  try {
+    res = await fetch(`${OAUTH_WORKER_URL}/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    })
+  } catch (err) {
+    throw new Error(
+      `Cannot reach OAuth worker (${OAUTH_WORKER_URL}). Check network or browser extensions. (${err instanceof Error ? err.message : err})`,
+    )
+  }
 
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(`Token exchange failed: ${text}`)
+    throw new Error(`Token exchange failed (${res.status}): ${text}`)
   }
 
-  const { access_token } = await res.json()
-  return access_token
+  const data = await res.json()
+
+  if (data.error) {
+    throw new Error(data.error_description || data.error)
+  }
+
+  if (!data.access_token) {
+    throw new Error('No access token in response')
+  }
+
+  return data.access_token
 }
 
 export interface GitHubUser {

@@ -10,3 +10,15 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Safari-style progress bar shine */
+@keyframes safariShine {
+  0% { background-position: -50% 0; }
+  100% { background-position: 150% 0; }
+}
+
+/* Staggered flip-in for researcher grid items */
+.researcher-enter {
+  animation: flipIn 0.6s ease-out forwards;
+  opacity: 0;
+}

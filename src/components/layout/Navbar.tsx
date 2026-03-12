@@ -26,6 +26,11 @@ export default function Navbar() {
           <Link to="/create" className="hover:text-brand-teal transition-colors">
             Create
           </Link>
+          {user && (
+            <Link to="/dashboard" className="hover:text-brand-teal transition-colors">
+              My Maps
+            </Link>
+          )}
           <Link to="/docs" className="hover:text-brand-teal transition-colors">
             Docs
           </Link>

@@ -10,4 +10,13 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    proxy: {
+      '/api/oauth': {
+        target: 'https://aimap-oauth.sriranga673.workers.dev',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/oauth/, ''),
+      },
+    },
+  },
 })

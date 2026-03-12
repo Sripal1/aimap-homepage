@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import { extractOAuthCallback, exchangeCodeForToken, fetchGitHubUser, redirectToGitHub } from '@/lib/oauth'
+import { getAuthItem, setAuthItem, getAuthJSON, setAuthJSON, clearAuth } from '@/lib/storage'
 import type { GitHubUser } from '@/types'
 
 interface AuthState {
@@ -22,35 +23,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const callback = extractOAuthCallback()
-    if (!callback) {
-      setLoading(false)
+
+    if (callback) {
+      // Clean OAuth params from URL
+      const url = new URL(window.location.href)
+      url.searchParams.delete('code')
+      url.searchParams.delete('state')
+      window.history.replaceState({}, '', url.pathname)
+
+      exchangeCodeForToken(callback.code)
+        .then(async (accessToken) => {
+          setToken(accessToken)
+          setAuthItem('token', accessToken)
+          const ghUser = await fetchGitHubUser(accessToken)
+          setUser(ghUser)
+          setAuthJSON('user', ghUser)
+        })
+        .catch((err) => {
+          setError(err.message)
+        })
+        .finally(() => {
+          setLoading(false)
+        })
       return
     }
 
-    // Clean OAuth params from URL
-    const url = new URL(window.location.href)
-    url.searchParams.delete('code')
-    url.searchParams.delete('state')
-    window.history.replaceState({}, '', url.pathname)
+    // Try restoring from localStorage
+    const storedToken = getAuthItem('token')
+    const storedUser = getAuthJSON<GitHubUser>('user')
 
-    exchangeCodeForToken(callback.code)
-      .then(async (accessToken) => {
-        setToken(accessToken)
-        const ghUser = await fetchGitHubUser(accessToken)
-        setUser(ghUser)
+    if (storedToken && storedUser) {
+      setToken(storedToken)
+      setUser(storedUser)
+      setLoading(false)
+
+      // Background validate the stored token
+      fetchGitHubUser(storedToken).catch(() => {
+        // Token expired or invalid — sign out
+        setToken(null)
+        setUser(null)
+        clearAuth()
       })
-      .catch((err) => {
-        setError(err.message)
-      })
-      .finally(() => {
-        setLoading(false)
-      })
+    } else {
+      setLoading(false)
+    }
   }, [])
 
   const login = useCallback(() => redirectToGitHub(), [])
   const logout = useCallback(() => {
     setToken(null)
     setUser(null)
+    clearAuth()
   }, [])
 
   return (

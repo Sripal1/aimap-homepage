@@ -48,14 +48,25 @@ export function buildResearchersCsv(data: CreateFormData): string {
 
   const rows = ['name,google_scholar_url']
   for (const line of lines) {
+    // Skip CSV header lines
+    if (/^name\s*,/i.test(line)) continue
+
     // Extract the Scholar URL from anywhere in the line
     const urlMatch = line.match(/(https?:\/\/scholar\.google\.com\/citations\?[^\s,]+)/)
     if (!urlMatch) continue
     const scholarUrl = urlMatch[1]
 
-    const idMatch = scholarUrl.match(/[?&]user=([^&]+)/)
-    const placeholderName = idMatch ? `researcher_${idMatch[1]}` : 'unknown'
-    rows.push(`${placeholderName},${scholarUrl}`)
+    // Try to extract a name from text before the URL (e.g. "Jane Doe,URL" or "Jane Doe URL")
+    const beforeUrl = line.slice(0, line.indexOf(urlMatch[1])).replace(/[,\s]+$/, '').replace(/^["']+|["']+$/g, '').trim()
+    let name = beforeUrl
+
+    if (!name) {
+      // Fallback: use Scholar ID as the name
+      const idMatch = scholarUrl.match(/[?&]user=([^&]+)/)
+      name = idMatch ? idMatch[1] : 'Unknown'
+    }
+
+    rows.push(`${name},${scholarUrl}`)
   }
 
   return rows.join('\n') + '\n'
