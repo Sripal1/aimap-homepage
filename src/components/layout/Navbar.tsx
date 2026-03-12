@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Github, ExternalLink, LogOut } from 'lucide-react'
+import { Github, LogOut } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { isOAuthConfigured } from '@/lib/oauth'
 
@@ -14,15 +14,6 @@ export default function Navbar() {
         </Link>
 
         <div className="flex items-center gap-6 text-sm text-stone-600">
-          <a
-            href="https://poloclub.github.io/ai-map/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 hover:text-brand-teal transition-colors"
-          >
-            Demo
-            <ExternalLink className="w-3 h-3" />
-          </a>
           <Link to="/create" className="hover:text-brand-teal transition-colors">
             Create
           </Link>
@@ -31,9 +22,6 @@ export default function Navbar() {
               My Maps
             </Link>
           )}
-          <Link to="/docs" className="hover:text-brand-teal transition-colors">
-            Docs
-          </Link>
           <a
             href="https://github.com/poloclub/ai-map"
             target="_blank"
